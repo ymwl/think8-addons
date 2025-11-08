@@ -56,7 +56,7 @@ class Service extends \think\Service
     private function loadLang()
     {
         Lang::load([
-            $this->app->getRootPath() . '/vendor/hulang/think-addons/src/lang/zh-cn.php',
+            $this->app->getRootPath() . '/vendor/ymwl/think8-addons/src/lang/zh-cn.php',
         ]);
     }
 
