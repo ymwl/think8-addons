@@ -7,7 +7,6 @@ namespace think;
 use think\App;
 use think\facade\Config;
 use think\facade\View;
-use hulang\tool\FileHelper;
 
 abstract class Addons
 {
@@ -171,7 +170,7 @@ abstract class Addons
         $config = $path . 'info.json';
         // 如果插件目录不存在,则创建该目录
         if (!is_file($path)) {
-            FileHelper::mkDir($path);
+            mkDir($path);
         }
         // 将输入的数组直接赋值给$list,此处用于演示,实际操作中可进行更多处理
         $list = [];
@@ -180,7 +179,7 @@ abstract class Addons
         }
         // 将数组内容编码为JSON格式,并写入info.json文件
         // 使用JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES选项以保持正确的字符编码和格式化输出
-        $result = FileHelper::writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $result = writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         // 返回文件写入操作的结果
         return $result;
     }
@@ -209,7 +208,7 @@ abstract class Addons
         // 检查info.json文件是否存在
         if (is_file($info_file)) {
             // 读取并解析info.json文件内容
-            $_info = json_decode(FileHelper::readFile($info_file), true);
+            $_info = json_decode(readFile($info_file), true);
             // 为info.json信息添加插件URL
             $_info['url'] = addons_url();
             // 合并从配置系统中获取的信息和info.json中的信息
@@ -245,10 +244,10 @@ abstract class Addons
         $config = $path . 'config.json';
         // 检查插件目录是否存在,如果不存在则创建
         if (!is_file($path)) {
-            FileHelper::mkDir($path);
+            mkDir($path);
         }
         // 将新的配置数据编码为 JSON 格式,并写入到配置文件中
-        $result = FileHelper::writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $result = writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         // 返回写入操作的结果
         return $result;
     }
@@ -275,7 +274,7 @@ abstract class Addons
         $config_file = $this->addon_path . 'config.json';
         // 如果配置文件存在,尝试读取并解析配置文件
         if (is_file($config_file)) {
-            $temp_arr = json_decode(FileHelper::readFile($config_file), true);
+            $temp_arr = json_decode(readFile($config_file), true);
             if ($type) {
                 return $temp_arr;
             }

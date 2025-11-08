@@ -317,7 +317,7 @@ if (!function_exists('get_addons_list')) {
         if (empty($list)) {
             // 插件目录
             $addonsPath = app()->getRootPath() . 'addons' . DS;
-            $results = FileHelper::getFolder($addonsPath);
+            $results = getFolder($addonsPath);
             $list = [];
             foreach ($results as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -331,7 +331,7 @@ if (!function_exists('get_addons_list')) {
                     if (!is_file($infoFile)) {
                         continue;
                     }
-                    $info = json_decode(FileHelper::readFile($infoFile), true);
+                    $info = json_decode(readFile($infoFile), true);
                     if (!isset($info['name'])) {
                         continue;
                     }
@@ -345,3 +345,162 @@ if (!function_exists('get_addons_list')) {
         return $list;
     }
 }
+if (!function_exists('mkDir')) {
+    /**
+     * 创建目录
+     *
+     * 该方法用于创建一个目录
+     * 如果目录已存在,方法将不进行任何操作
+     * 如果目录不存在且成功创建,则返回true;否则返回false
+     *
+     * @param string $dir 目录名.默认为空字符串,表示使用方法调用时的路径
+     * @return mixed|bool 方法执行结果.成功创建目录返回true,否则返回false
+     */
+     function mkDir($dir = '')
+    {
+        $result = false;
+        // 检查目录是否存在,如果不存在则尝试创建
+        if (!is_dir($dir)) {
+            // 尝试递归创建目录,权限设置为0755
+            if (mkdir($dir, 0755, true)) {
+                $result = true;
+            }
+        }
+        return $result;
+    }
+}
+
+if (!function_exists('getFolder')) {
+
+    /**
+     * 获取指定路径下的目录信息
+     *
+     * 该方法用于获取给定路径下的所有文件和目录的详细信息
+     * 它通过迭代指定路径中的每个文件和目录来实现,对每个文件和目录
+     * 收集信息如名称、类型、大小、访问时间等,并以数组形式返回
+     *
+     * @param string $path 要查询的目录路径,默认为空,表示当前目录
+     * @param array $exclude 需要排除的文件或目录名称,默认为空数组
+     *                       如果指定了排除的文件或目录,则不会返回这些文件或目录的信息
+     * @return array 如果路径是有效的目录,则返回包含文件和目录信息的数组
+     *               如果路径无效或不是目录,则返回 null
+     */
+    function getFolder($path = '', $exclude = [])
+    {
+        // 检查路径是否为有效目录
+        if (!is_dir($path)) {
+            return null;
+        }
+        // 处理路径,确保其以斜杠结尾,并转换为真实路径
+        $path = rtrim($path, '/') . '/';
+        $path = realpath($path);
+        // 使用FilesystemIterator遍历目录,将文件名作为键
+        $flag = \FilesystemIterator::KEY_AS_FILENAME;
+        $glob = new \FilesystemIterator($path, $flag);
+        // 排除一些特殊文件,如'.'和'..'
+        $excludeCharacters = ['.', '..'];
+        $excludeCharacters = array_merge($excludeCharacters, $exclude);
+        // 用于存储目录信息的数组
+        $list = [];
+        foreach ($glob as $k => $file) {
+            $arr = [];
+            // 排除一些特殊文件
+            if (in_array($file->getFilename(), $excludeCharacters)) {
+                continue;
+            }
+            // 判断文件是目录还是普通文件,并获取相应的信息
+            $arr['type'] = $file->getType();
+            if ($file->isDir()) {
+                $arr['size'] = self::getFileSizeFormat(self::getDirSize($file->getPathname()));
+            } else {
+                $arr['size'] = self::getFileSizeFormat($file->getSize());
+            }
+            $arr['ext'] = $file->getExtension();
+            // 文件名的转换编码
+            $arr['name'] = self::getConvertEncoding($file->getFilename());
+            // 收集文件的其他信息
+            $arr['path_name'] = $file->getPathname();
+            $arr['atime'] = $file->getATime();
+            $arr['mtime'] = $file->getMTime();
+            $arr['ctime'] = $file->getCTime();
+            $arr['is_readable'] = $file->isReadable();
+            $arr['is_writeable'] = $file->isWritable();
+            $arr['base_name'] = $file->getBasename();
+            $arr['group'] = $file->getGroup();
+            $arr['inode'] = $file->getInode();
+            $arr['owner'] = $file->getOwner();
+            $arr['path'] = $file->getPath();
+            $arr['perms'] = $file->getPerms();
+            $arr['is_executable'] = $file->isExecutable();
+            $arr['is_file'] = $file->isFile();
+            $arr['is_link'] = $file->isLink();
+            $arr['SplFileInfo'] = new \SplFileInfo($file->getFilename());
+            // 将文件或目录信息添加到结果数组
+            $list[$k] = $arr;
+        }
+        // 根据文件大小对结果进行排序,如果只有一个元素则按名称排序
+        $list == 1 ? sort($list) : rsort($list);
+        // 返回包含文件和目录信息的数组
+        return $list;
+    }
+}
+
+if (!function_exists('readFile')) {
+
+    /**
+     * 读取文件内容
+     *
+     * 该方法用于读取指定文件的内容
+     * 如果未指定文件名或文件不存在,则返回空字符串
+     *
+     * @param string $filename 文件名,可以为空.如果为空,则方法将不执行任何操作并返回空字符串
+     * @return mixed|string 返回读取的文件内容作为字符串,如果文件名为空或文件不存在,则返回空字符串
+     */
+    function readFile($filename = '')
+    {
+        $content = '';
+        // 当文件名不为空且确实是现有文件时,尝试读取文件内容
+        if (!empty($filename) && is_file($filename)) {
+            $content = file_get_contents($filename);
+        }
+        return $content;
+    }
+}
+
+if (!function_exists('writeFile')) {
+    /**
+     * 写文件
+     *
+     * 该函数用于将指定的文字写入到指定的文件中
+     * 如果文件不存在,会尝试创建文件及其目录
+     * 函数返回写入操作的成功与否
+     *
+     * @param string $filename 文件名,可以包含路径.如果文件名为空,写入操作将失败
+     * @param string $writetext 要写入文件的文本内容.如果内容为空,写入操作将失败
+     * @param mixed|string|int $mode 写入文件的模式,默认为LOCK_EX,可参考PHP文件操作模式的文档
+     * @return mixed|bool 如果写入成功,返回true;如果写入失败或参数不满足条件,返回false
+     */
+    function writeFile($filename = '', $writetext = '', $mode = LOCK_EX)
+    {
+        // 检查文件名和内容是否为空,如果为空则直接返回false
+        if (!empty($filename) && !empty($writetext)) {
+            // 使用pathinfo获取文件的目录信息,为创建目录做准备
+            $fileArr = pathinfo($filename);
+            // 调用mkDir方法尝试创建文件所在的目录
+            self::mkDir($fileArr['dirname']);
+            // 使用file_put_contents将文本内容写入文件,返回写入的字节数
+            $size = file_put_contents($filename, $writetext, $mode);
+            // 如果成功写入字节大于0,则返回true,表示写入成功
+            if ($size > 0) {
+                return true;
+            } else {
+                // 如果写入的字节为0,表示写入失败,返回false
+                return false;
+            }
+        } else {
+            // 如果文件名或内容为空,直接返回false
+            return false;
+        }
+    }
+}
+

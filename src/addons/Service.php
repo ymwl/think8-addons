@@ -10,7 +10,6 @@ use think\facade\Cache;
 use think\facade\Event;
 use think\facade\Config;
 use think\addons\middleware\Addons;
-use hulang\tool\FileHelper;
 
 /**
  * 插件服务
@@ -178,7 +177,7 @@ class Service extends \think\Service
     {
         $bind = [];
         // 配置
-        $results = FileHelper::getFolder($this->addons_path);
+        $results = getFolder($this->addons_path);
         if (!empty($results)) {
             foreach ($results as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -215,7 +214,7 @@ class Service extends \think\Service
         // 获取ThinkPHP自带的插件类方法作为基线,用于后续比较
         $base = get_class_methods("\\think\\Addons");
         // 遍历插件目录下的所有文件,以寻找和注册插件的钩子
-        $list = FileHelper::getFolder($this->getAddonsPath());
+        $list = getFolder($this->getAddonsPath());
         if (!empty($list)) {
             foreach ($list as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -256,7 +255,7 @@ class Service extends \think\Service
     private function loadRoutes()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = getFolder($this->addons_path);
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -276,7 +275,7 @@ class Service extends \think\Service
     private function loadConfig()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = getFolder($this->addons_path);
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -305,7 +304,7 @@ class Service extends \think\Service
     private function loadFun()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = getFolder($this->addons_path);
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -325,7 +324,7 @@ class Service extends \think\Service
     private function loadCommand()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = getFolder($this->addons_path);
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -357,7 +356,7 @@ class Service extends \think\Service
         $addons_path = $this->app->getRootPath() . 'addons' . DIRECTORY_SEPARATOR;
         // 检查插件目录是否存在,不存在则尝试创建
         if (!is_dir($addons_path)) {
-            FileHelper::mkDir($addons_path);
+            mkDir($addons_path);
         }
         // 返回插件目录路径
         return $addons_path;
