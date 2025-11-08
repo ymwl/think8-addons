@@ -7,7 +7,7 @@
 
 #### 安装
 ```php
-composer require hulang/think-addons
+composer require ymwl/think8-addons
 ```
 
 #### 配置
@@ -75,12 +75,12 @@ return [
     "name": "test",
     "title": "插件测试",
     "description": "ThinkPHP8 插件测试",
-    "website": "https://github.com/hulang/think-addons",
+    "website": "https://github.com/ymwl/think8-addons",
     "status": "0",
     "is_admin": "0",
     "is_index": "0",
     "install": "1",
-    "author": "hulangfy@163.com",
+    "author": "zx80com@163.com",
     "version": "1.0.0"
 }
 ```
@@ -95,7 +95,7 @@ use think\Addons;
 
 /**
  * 插件测试
- * @author hulangfy@163.com
+ * @author zx80com@163.com
  */
 class Plugin extends Addons	// 需继承think\Addons类
 {

@@ -6,7 +6,6 @@ use think\facade\Event;
 use think\facade\Route;
 use think\facade\Cache;
 use think\helper\Str;
-use hulang\tool\FileHelper;
 
 define('DS', DIRECTORY_SEPARATOR);
 
