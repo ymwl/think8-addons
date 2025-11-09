@@ -68,9 +68,6 @@ class Service extends \think\Service
     {
         $this->registerRoutes(function (Route $route) {
             // 只有在addons下进行注册解析
-            $path = $this->app->request->pathinfo();
-            $pathArr = explode('/', str_replace('.html', '', str_replace('\\', '/', $path)));
-            if ($pathArr[0] === 'addons') {
                 // 路由脚本
                 $execute = '\\think\\addons\\Route::execute';
                 // 注册插件公共中间件
@@ -107,7 +104,8 @@ class Service extends \think\Service
                             }
                         });
                     } else {
-                        [$addon, $controller, $action] = explode('/', $val);
+
+                        [$addon, $controller, $action] = explode('/', trim($val,'/$'));
                         $route->rule($key, $execute)
                             ->name($key)
                             ->completeMatch(true)
@@ -118,7 +116,7 @@ class Service extends \think\Service
                             ]);
                     }
                 }
-            }
+
         });
     }
 

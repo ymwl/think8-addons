@@ -242,29 +242,23 @@ abstract class Addons
             $path = $this->app->addons->getAddonsPath() . $name . DIRECTORY_SEPARATOR;
         }
         // 拼接插件的配置文件路径
-        $config = $path . 'config.json';
-        // 检查插件目录是否存在,如果不存在则创建
-        if (!is_file($path)) {
-            FileHelper::mkDir($path);
-        }
-        // 将新的配置数据编码为 JSON 格式,并写入到配置文件中
-        $result = FileHelper::writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        // 返回写入操作的结果
-        return $result;
+        $config = $path . 'config.php';
+
+        return file_put_contents($config, "<?php \r\n return ".var_export($array,true).';');
     }
 
     /**
      * 获取插件的配置信息
      * 
      * 本方法用于获取当前插件的配置信息
-     * 首先尝试从内存中的配置缓存中获取配置,如果缓存中不存在,则尝试从插件目录下的config.json文件中读取配置信息,并将读取到的配置缓存起来,以供后续使用
+     * 首先尝试从内存中的配置缓存中获取配置,如果缓存中不存在,则尝试从插件目录下的config.php文件中读取配置信息,并将读取到的配置缓存起来,以供后续使用
      * 
      * @param bool $type 是否返回完整的配置数组.如果为true,则返回完整的配置数组；
      *                  如果为false,则只返回配置值部分
      * @return mixed|array 如果$type为false,返回配置值的数组；如果$type为true,
      *                    返回包含完整配置信息的数组
      */
-    final public function getConfig($type = false)
+    final public function getConfig()
     {
         // 尝试从配置缓存中获取插件的配置信息
         $config = Config::get($this->addon_config, []);
@@ -272,18 +266,10 @@ abstract class Addons
             return $config;
         }
         // 构建插件配置文件的路径
-        $config_file = $this->addon_path . 'config.json';
+        $config_file = $this->addon_path . 'config.php';
         // 如果配置文件存在,尝试读取并解析配置文件
         if (is_file($config_file)) {
-            $temp_arr = json_decode(FileHelper::readFile($config_file), true);
-            if ($type) {
-                return $temp_arr;
-            }
-            // 如果不需要完整的配置数组,只提取配置值部分
-            foreach ($temp_arr as $key => $value) {
-                $config[$key] = $value['value'];
-            }
-            unset($temp_arr);
+            $config = require $config_file;
         }
         // 将获取到的配置信息缓存起来
         Config::set($config, $this->addon_config);

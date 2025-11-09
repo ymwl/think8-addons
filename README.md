@@ -136,20 +136,29 @@ class Plugin extends Addons	// 需继承think\Addons类
 
 #### 创建插件配置文件
 
-> 在test目录中创建`config.json`配置文件，插件配置文件可以省略。
+> 在test目录中创建`config.php`配置文件，插件配置文件可以省略。
 
-```js
-{
-    "display": {
-        "title": "是否显示:",
-        "type": "radio",
-        "options": {
-            "1": "显示",
-            "0": "不显示"
-        },
-        "value": "1"
-    }
-}
+```php
+return [
+    [
+        'name'    => 'rewrite',
+        'title'   => '伪静态',
+        'type'    => 'array',
+        'content' =>
+            [],
+        'value'   =>
+            [
+                'index/index' => '/source/$',
+                'index/check'  => '/source/check',
+                'index/captcha'  => '/source/captcha',
+            ],
+        'rule'    => 'required',
+        'msg'     => '',
+        'tip'     => '',
+        'ok'      => '',
+        'extend'  => '',
+    ],
+];
 ```
 
 #### 创建钩子`模板`文件

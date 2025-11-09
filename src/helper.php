@@ -7,8 +7,9 @@ use think\facade\Route;
 use think\facade\Cache;
 use think\helper\Str;
 use think\FileHelper;
-
 define('DS', DIRECTORY_SEPARATOR);
+
+
 
 // 插件类库自动载入
 spl_autoload_register(function ($class) {
@@ -58,6 +59,8 @@ if (!function_exists('hook')) {
         return join('', $result);
     }
 }
+
+
 
 if (!function_exists('get_addons_info')) {
     /**
@@ -331,7 +334,15 @@ if (!function_exists('get_addons_list')) {
                     if (!is_file($infoFile)) {
                         continue;
                     }
+
                     $info = json_decode(FileHelper::readFile($infoFile), true);
+                    //                    如果存在则说明需要设置
+                    $infoFile = join(DS, [$v['path_name'], 'config.php']);
+                    if (is_file($infoFile)) {
+                        $info['is_set']=1;
+                    }else{
+                        $info['is_set']=0;
+                    }
                     if (!isset($info['name'])) {
                         continue;
                     }
