@@ -1,9 +1,26 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
+当前版本：`v1.0.4`
+
+#### 更新日志
+
+**v1.0.4**（2025-06-30）
+- 多应用安全隔离：插件路由仅在 `index` 应用中注册和执行，防止 admin/install 等管理应用路由污染
+- 路由注册前自动检查插件启用状态，已禁用插件的路由将被跳过
+- 插件目录扫描增加缓存机制，减少重复 IO 提升性能
+- 修复 `loadService()` 中 `json_decode` 错误解析文件路径而非文件内容的 Bug
+- 插件路由参数校验提前至事件触发之前，增强安全性
+- 移除 `getInfo()` 中自动附加 URL 的冗余逻辑
+
+**v1.0.3**
+- 新增 `get_addons_menu()` 获取插件菜单
+- 新增 `get_addons_list()` 获取插件列表（含缓存）
+- 完善插件安装/卸载生命周期
+
 #### 环境
 
 - php >=8.0.0
-- ThinkPHP ^8.0.0
+- ThinkPHP ^8.0.0（支持多应用模式）
 
 #### 安装
 ```php
@@ -205,7 +222,7 @@ class Index
 ```
 
 #### php业务中使用
-> 只要是thinkphp6正常流程中的任意位置均可以使用
+> 只要是 ThinkPHP 正常流程中的任意位置均可以使用
 
 ```php
 hook('testhook', ['id'=>1])
@@ -254,7 +271,32 @@ function get_addons_instance($name);
  */
 function addons_url($url = '', $param = [], $suffix = true, $domain = false);
 
+/**
+ * 获取插件菜单
+ * @param string $name 插件名
+ * @return mixed|array
+ */
+function get_addons_menu($name);
+
+/**
+ * 获取插件列表（含缓存）
+ * @return mixed|array
+ */
+function get_addons_list();
+
 ```
+
+#### 多应用模式说明
+
+> v1.0.4+ 版本针对 ThinkPHP 多应用模式做了安全隔离
+
+在多应用项目中（如 admin、api、index、install 等），插件系统有以下限制：
+
+1. **路由注册**：插件路由仅在 `index` 应用中注册，admin/api/install 等应用不会加载插件路由
+2. **路由执行**：`Route::execute()` 仅允许在 `index` 应用上下文中执行，其他应用访问插件路由将返回 404
+3. **禁用插件过滤**：配置中的自定义路由，如果对应插件已禁用或不存在，路由将被自动跳过
+
+这意味着插件的前台页面功能仅在 `index` 应用中可用。如果需要在管理后台使用插件功能，应通过插件的服务绑定（`service.json`）或钩子机制来实现，而非直接访问插件控制器路由。
 
 #### 插件目录结构
 ##### 最终生成的目录结构为

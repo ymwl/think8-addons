@@ -6,6 +6,7 @@ return [
     'addon controller %s not found'               => '插件控制器 %s 未找到',
     'addon action %s not found'                   => '插件控制器方法 %s 未找到',
     'addon can not be empty'                      => '插件不能为空',
+    'addon not available in admin context'        => '插件不能在当前应用上下文中访问',
     'Keep login'                                  => '保持会话',
     'Forgot password'                             => '忘记密码?',
     'Username'                                    => '用户名',

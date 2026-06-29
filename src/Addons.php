@@ -173,11 +173,7 @@ abstract class Addons
         if (!is_file($path)) {
             FileHelper::mkDir($path);
         }
-        // 将输入的数组直接赋值给$list,此处用于演示,实际操作中可进行更多处理
-        $list = [];
-        foreach ($array as $k => $v) {
-            $list[$k] = $v;
-        }
+
         // 将数组内容编码为JSON格式,并写入info.json文件
         // 使用JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES选项以保持正确的字符编码和格式化输出
         $result = FileHelper::writeFile($config, json_encode($array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -210,8 +206,6 @@ abstract class Addons
         if (is_file($info_file)) {
             // 读取并解析info.json文件内容
             $_info = json_decode(FileHelper::readFile($info_file), true);
-            // 为info.json信息添加插件URL
-            $_info['url'] = addons_url();
             // 合并从配置系统中获取的信息和info.json中的信息
             $info = array_merge($_info, $info);
         }

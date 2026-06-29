@@ -20,6 +20,15 @@ use think\FileHelper;
 class Service extends \think\Service
 {
     protected $addons_path;
+    protected $addonsDirCache = null;
+
+    private function getAddonsDirList()
+    {
+        if ($this->addonsDirCache === null) {
+            $this->addonsDirCache = FileHelper::getFolder($this->addons_path) ?: [];
+        }
+        return $this->addonsDirCache;
+    }
 
     /**
      * 注册插件系统
@@ -66,6 +75,11 @@ class Service extends \think\Service
      */
     public function boot()
     {
+        // 仅在 index 应用中注册插件路由，防止在 admin/install 等管理应用中污染路由表
+        $appName = $this->app->http->getName();
+        if (!in_array($appName, ['index'])) {
+            return;
+        }
         $this->registerRoutes(function (Route $route) {
             // 只有在addons下进行注册解析
                 // 路由脚本
@@ -87,6 +101,11 @@ class Service extends \think\Service
                         $rules = [];
                         foreach ($val['rule'] as $k => $rule) {
                             [$addon, $controller, $action] = explode('/', $rule);
+                            // 检查插件是否存在且已启用，跳过已禁用或不存在的插件路由
+                            $addonInfo = get_addons_info($addon);
+                            if (empty($addonInfo) || !$addonInfo['status']) {
+                                continue;
+                            }
                             $rules[$k] = [
                                 'addon' => $addon,
                                 'controller' => $controller,
@@ -94,18 +113,25 @@ class Service extends \think\Service
                                 'indomain' => 1,
                             ];
                         }
-                        $route->domain($domain, function () use ($rules, $route, $execute) {
-                            // 动态注册域名的路由规则
-                            foreach ($rules as $k => $rule) {
-                                $route->rule($k, $execute)
-                                    ->name($k)
-                                    ->completeMatch(true)
-                                    ->append($rule);
-                            }
-                        });
+                        if (!empty($rules)) {
+                            $route->domain($domain, function () use ($rules, $route, $execute) {
+                                // 动态注册域名的路由规则
+                                foreach ($rules as $k => $rule) {
+                                    $route->rule($k, $execute)
+                                        ->name($k)
+                                        ->completeMatch(true)
+                                        ->append($rule);
+                                }
+                            });
+                        }
                     } else {
 
                         [$addon, $controller, $action] = explode('/', trim($val,'/$'));
+                        // 检查插件是否存在且已启用，跳过已禁用或不存在的插件路由
+                        $addonInfo = get_addons_info($addon);
+                        if (empty($addonInfo) || !$addonInfo['status']) {
+                            continue;
+                        }
                         $route->rule($key, $execute)
                             ->name($key)
                             ->completeMatch(true)
@@ -176,13 +202,14 @@ class Service extends \think\Service
     {
         $bind = [];
         // 配置
-        $results = FileHelper::getFolder($this->addons_path);
+        $results = $this->getAddonsDirList();
         if (!empty($results)) {
             foreach ($results as $k => $v) {
                 if ($v['type'] == 'dir') {
                     $service_file = join(DIRECTORY_SEPARATOR, [$v['path_name'], 'service.json']);
                     if (is_file($service_file)) {
-                        $j = json_decode($service_file, true);
+                        $content = file_get_contents($service_file);
+                        $j = json_decode($content, true) ?: [];
                         // 将当前插件的绑定信息合并到总的绑定数组中
                         $bind = array_merge($bind, $j);
                     }
@@ -213,7 +240,7 @@ class Service extends \think\Service
         // 获取ThinkPHP自带的插件类方法作为基线,用于后续比较
         $base = get_class_methods("\\think\\Addons");
         // 遍历插件目录下的所有文件,以寻找和注册插件的钩子
-        $list = FileHelper::getFolder($this->getAddonsPath());
+        $list = $this->getAddonsDirList();
         if (!empty($list)) {
             foreach ($list as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -254,7 +281,7 @@ class Service extends \think\Service
     private function loadRoutes()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = $this->getAddonsDirList();
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -274,7 +301,7 @@ class Service extends \think\Service
     private function loadConfig()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = $this->getAddonsDirList();
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -303,7 +330,7 @@ class Service extends \think\Service
     private function loadFun()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = $this->getAddonsDirList();
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {
@@ -323,7 +350,7 @@ class Service extends \think\Service
     private function loadCommand()
     {
         // 配置
-        $addons_dir = FileHelper::getFolder($this->addons_path);
+        $addons_dir = $this->getAddonsDirList();
         if (!empty($addons_dir)) {
             foreach ($addons_dir as $k => $v) {
                 if ($v['type'] == 'dir') {

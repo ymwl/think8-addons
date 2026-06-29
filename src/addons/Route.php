@@ -23,18 +23,24 @@ class Route
     {
         // 获取应用程序实例
         $app = app();
+        // 安全检查：仅允许在 index 应用中执行插件路由，防止在 admin/install 等管理应用中误触发
+        $appName = $app->http->getName();
+        if (!in_array($appName, ['index'])) {
+            throw new HttpException(404, lang('addon not available in admin context'));
+        }
         // 获取当前请求对象
         $request = $app->request;
         // 从路由中获取插件、控制器和操作的名称
         $addon = $request->route('addon');
         $controller = $request->route('controller');
         $action = $request->route('action');
-        // 触发addons_begin事件,可以在事件处理程序中进行一些全局的初始化操作
-        Event::trigger('addons_begin', $request);
         // 检查插件、控制器和操作的名称是否为空,如果为空,抛出HTTP异常
         if (empty($addon) || empty($controller) || empty($action)) {
             throw new HttpException(500, lang('addon can not be empty'));
         }
+        // 触发addons_begin事件,可以在事件处理程序中进行一些全局的初始化操作
+        // 注意: 事件触发必须在参数验证之后,确保只在合法的插件请求中触发
+        Event::trigger('addons_begin', $request);
         // 设置请求的插件、控制器和操作属性
         $request->addon = $addon;
         // 设置当前请求的控制器、操作
@@ -46,7 +52,7 @@ class Route
         }
         // 检查插件是否被禁用,如果被禁用,抛出HTTP异常
         if (!$info['status']) {
-            throw new HttpException(500, lang('addon %s is disabled', [$addon]));
+            throw new HttpException(404, lang('addon %s is disabled', [$addon]));
         }
         // 触发addon_module_init事件,可以在事件处理程序中进行一些插件相关的初始化操作
         Event::trigger('addon_module_init', $request);
