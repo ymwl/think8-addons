@@ -1,8 +1,17 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.0.4`
+当前版本：`v1.1.0`
 
 #### 更新日志
+
+**v1.1.0**（2026-07-31）
+- 插件配置统一管理：新增「文件默认值 + `addon_config` 数据表存储」双层配置架构
+- 扩展 `get_addons_config()`：数据库配置值自动覆盖文件默认值，新增 `$type=true` 返回简化键值映射
+- 增强 `set_addons_config()`：写入 `config.php` 的同时将配置值同步到 `addon_config` 数据表
+- 新增 `get_addons_db_config()`：读取数据表配置（带缓存，缓存键 `addon_config_{插件名}`）
+- 新增 `get_addons_config_value()` / `set_addons_config_value()`：单个配置项便捷读写
+- 完善降级兼容：`addon_config` 表未创建时自动回退纯文件模式，不影响已有插件运行
+- 文档：`info.json` 新增版本兼容性声明字段说明（`require_php` / `require_crm` / `max_crm`，由宿主项目在安装/升级/启用时检查）
 
 **v1.0.4**（2025-06-30）
 - 多应用安全隔离：插件路由仅在 `index` 应用中注册和执行，防止 admin/install 等管理应用路由污染
@@ -98,9 +107,23 @@ return [
     "is_index": "0",
     "install": "1",
     "author": "zx80com@163.com",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "require_php": "8.0.0",
+    "require_crm": "5.0.0",
+    "max_crm": "6.0.0"
 }
 ```
+
+**版本兼容性声明字段（可选）**：
+
+| 字段 | 说明 |
+|------|------|
+| `require_php` | 插件要求的最低 PHP 版本 |
+| `require_crm` | 插件要求的最低宿主系统版本（对比宿主项目 `config/version.php` 的 `version`） |
+| `max_crm` | 插件兼容的最高宿主系统版本 |
+
+> 三个字段均为可选，未声明时自动跳过对应检查项，老插件无需修改。
+> 兼容性检查由宿主项目在插件**安装、升级、启用**时执行（符号象CRM 中为 `app/admin/service/AddonLifecycle.php` 的 `checkCompatibility()` 方法），本扩展包不包含该逻辑。
 
 ### 插件`Plugin.php`文件基础信息
 
@@ -247,12 +270,45 @@ function hook($event, $params = null, bool $once = false);
 function get_addons_info($name);
 
 /**
-* 获取配置信息
-* @param string $name 插件名
-* @param bool $type 是否获取完整配置
-* @return mixed|array
-*/
-function get_addons_config($name, $type = false)
+ * 获取插件配置信息（文件默认值 + 数据库覆盖，详见下方「插件配置管理」章节）
+ * @param string $name 插件名
+ * @param bool $type false=返回完整配置结构（默认），true=返回简化的 键=>值 映射
+ * @return mixed|array
+ */
+function get_addons_config($name, $type = false);
+
+/**
+ * 设置插件配置信息（写入 config.php 文件并同步到 addon_config 数据表）
+ * @param string $name 插件名
+ * @param array $array 完整配置结构数组
+ * @return mixed|bool
+ */
+function set_addons_config($name = '', $array = []);
+
+/**
+ * 读取 addon_config 数据表中指定插件的配置值（带缓存）
+ * @param string $name 插件名
+ * @return array 配置键=>配置值 映射
+ */
+function get_addons_db_config($name);
+
+/**
+ * 读取插件单个配置项的值
+ * @param string $name 插件名
+ * @param string $field 配置键
+ * @param mixed $default 配置不存在时的默认值
+ * @return mixed
+ */
+function get_addons_config_value($name, $field, $default = null);
+
+/**
+ * 写入插件单个配置项的值（仅写数据表，不修改 config.php）
+ * @param string $name 插件名
+ * @param string $field 配置键
+ * @param mixed $value 配置值（自动 JSON 序列化）
+ * @return bool
+ */
+function set_addons_config_value($name, $field, $value);
 
 /**
  * 获取插件Plugin的单例
@@ -285,6 +341,120 @@ function get_addons_menu($name);
 function get_addons_list();
 
 ```
+
+#### 插件配置管理（v1.1.0+）
+
+> v1.1.0 起，插件配置采用「双层存储」架构：`config.php` 文件提供配置的**结构定义与默认值**，`addon_config` 数据表存储**用户修改后的实际值**，数据库值优先生效。
+
+##### 一、两种存储方式的区别
+
+| 维度 | `config.php` 文件 | `addon_config` 数据表 |
+|------|------------------|----------------------|
+| 角色 | 配置的结构定义 + 出厂默认值（“表单模板”） | 用户修改后的实际值（“用户数据”） |
+| 内容 | 完整结构：`['rewrite'=>['type'=>'text','title'=>'伪静态','value'=>'0']]` | 扁平键值：`addon=test, field=rewrite, value="1"` |
+| 来源 | 插件开发者随插件包发布 | 用户在后台配置页保存产生 |
+| 生命周期 | 随插件文件分发、升级覆盖、删除 | 随数据库存在，升级不丢失 |
+| 读取方式 | `require` PHP 文件（OPcache 加速） | SQL 查询 + 缓存（键 `addon_config_{插件名}`） |
+
+##### 二、为什么需要数据表补充文件配置
+
+1. **升级不丢配置**：`setConfig()` 保存配置时会覆写整个 `config.php`，插件升级时新版本自带的 `config.php` 会覆盖用户修改；配置值存入数据表后，升级只替换代码文件，用户值自动覆盖回来
+2. **写入更安全**：避免生产环境插件目录只读导致写文件失败，以及并发写文件损坏、OPcache 旧值等问题
+3. **卸载完整清理**：卸载插件时按 `WHERE addon='xxx'` 一次性清理配置，零残留
+4. **可查询可审计**：表中含 `create_time`/`update_time`，可跨插件统一查看，随整库备份自动纳入备份策略
+
+##### 三、数据表结构
+
+> 建表脚本参见项目 `update/addon_config_table.sql`（表前缀按实际项目调整）
+
+```sql
+CREATE TABLE IF NOT EXISTS `ymwl_addon_config` (
+  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `addon` varchar(50) NOT NULL DEFAULT '' COMMENT '插件标识名',
+  `field` varchar(100) NOT NULL DEFAULT '' COMMENT '配置键',
+  `value` text COMMENT '配置值(JSON)',
+  `create_time` int(11) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  `update_time` int(11) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_addon_field` (`addon`, `field`),
+  KEY `idx_addon` (`addon`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='插件配置表';
+```
+
+未创建此表时所有函数自动降级为纯文件模式，不报错、不影响已有插件。
+
+##### 四、get_addons_config() 使用详解
+
+**函数签名**：`get_addons_config($name, $type = false)`
+
+**参数说明**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `$name` | string | 无 | 插件名（addons 目录下的目录名） |
+| `$type` | bool | `false` | `false`=返回完整配置结构（含 type/title/value 等字段定义，与历史行为一致）；`true`=返回简化的 配置键=>配置值 映射 |
+
+**返回值**：插件不存在返回空数组 `[]`；否则返回合并后的配置数组。
+
+**合并规则**：先读 `config.php` 作为基础，再用 `addon_config` 表中的值覆盖——若文件配置项是含 `value` 键的数组则仅覆盖其 `value`（保留 type/title 等结构），否则直接赋值。
+
+```php
+// 默认模式：完整结构（后台配置页渲染表单用）
+$config = get_addons_config('test');
+// ['rewrite' => ['type'=>'text', 'title'=>'伪静态', 'value'=>'1'], ...]
+echo $config['rewrite']['value'];   // 数据库值优先，其次文件默认值
+
+// 简化模式：键值映射（插件业务代码直接取值）
+$values = get_addons_config('test', true);
+// ['rewrite' => '1', ...]
+```
+
+##### 五、set_addons_config() 使用详解
+
+**函数签名**：`set_addons_config($name = '', $array = [])`
+
+**参数说明**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `$name` | string | 插件名 |
+| `$array` | array | 完整配置结构数组（与 get_addons_config 默认返回格式一致） |
+
+**返回值**：插件不存在返回空数组 `[]`；写入成功返回写入字节数（`file_put_contents` 结果），失败返回 `false`。
+
+**写入行为**：
+1. 将完整结构写入插件目录 `config.php`（保持原有行为）
+2. 提取各配置项的 `value`（无 value 键则取项本身），JSON 序列化后 upsert 到 `addon_config` 表
+3. 自动清除 `addon_config_{插件名}` 缓存
+
+```php
+// 典型场景：后台插件配置页保存
+$config = get_addons_config('test');          // 取完整结构
+$config['rewrite']['value'] = '1';            // 修改值
+set_addons_config('test', $config);           // 双写：文件 + 数据表
+```
+
+##### 六、单个配置项便捷读写
+
+```php
+// 读：优先数据表值，其次文件默认值，都没有则返回 $default
+get_addons_config_value('test', 'rewrite', '0');
+
+// 写：仅写 addon_config 表（不动 config.php），支持数组值自动 JSON 序列化
+// 成功返回 true，表不存在时返回 false
+set_addons_config_value('test', 'rewrite', '1');
+set_addons_config_value('test', 'options', ['a' => 1, 'b' => '中文']);
+```
+
+##### 七、使用场景建议
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 插件开发者定义配置项结构与默认值 | 随插件包提供 `config.php` |
+| 后台配置页整体保存 | `set_addons_config()`（双写） |
+| 插件业务代码读取配置 | `get_addons_config($name, true)` 或 `get_addons_config_value()` |
+| 插件运行时动态记录状态/开关 | `set_addons_config_value()`（仅写表，不碰文件） |
+| 卸载插件清理配置 | 删除 `addon_config` 表中 `addon={插件名}` 的记录，并清除 `addon_config_{插件名}` 缓存 |
 
 #### 多应用模式说明
 

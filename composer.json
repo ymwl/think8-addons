@@ -1,6 +1,6 @@
 {
     "name": "ymwl/think8-addons",
-    "description": "The ThinkPHP 8.0.0 Addons Package",
+    "description": "The ThinkPHP 8.0.0 Addons Package, with unified addon config management (file defaults + addon_config database storage with cache)",
     "license": "Apache-2.0",
     "authors": [
         {

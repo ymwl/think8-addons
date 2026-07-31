@@ -114,14 +114,14 @@ if (!function_exists('get_addons_config')) {
      * 获取插件的配置信息
      * 
      * 本函数用于检索指定插件的配置信息
-     * 插件配置是插件开发者定义的一组参数,用于定制插件的行为或提供给插件使用者进行配置
-     * 通过插件名获取插件实例后,调用插件实例的getConfig方法来获取配置信息
+     * 配置来源分两层：插件目录 config.php 提供默认配置结构，addon_config 数据表存储用户修改后的配置值
+     * 数据库中的配置值优先生效（覆盖文件默认值），卸载插件时可按 addon 字段统一清理
+     * addon_config 表尚未创建时自动降级为仅读取文件配置，保持向后兼容
      * 
      * @param string $name 插件的名称.这是识别插件的唯一标识符
-     * @param bool $type 指定是否获取完整的配置信息.默认为false,表示只获取默认配置
-     *                  如果设置为true,则会尝试获取完整的配置信息,包括可能的用户自定义配置
-     * @return mixed|array 如果插件存在并成功获取配置,则返回配置信息,这可以是一个数组或其它类型的值
-     *                    如果插件不存在或获取配置失败,则返回一个空数组
+     * @param bool $type 默认为false,返回完整配置结构（含type/value等字段定义，与历史行为一致）
+     *                  设置为true时,返回简化的 配置键=>配置值 映射,方便插件业务代码直接使用
+     * @return mixed|array 如果插件存在并成功获取配置,则返回配置信息；如果插件不存在或获取配置失败,则返回一个空数组
      */
     function get_addons_config($name, $type = false)
     {
@@ -131,16 +131,74 @@ if (!function_exists('get_addons_config')) {
         if (!$addon) {
             return [];
         }
-        // 通过插件实例获取配置信息,根据$type的值决定获取默认配置还是完整配置
-        return $addon->getConfig($type);
+        // 基础配置：插件目录 config.php（保持原有行为）
+        $config = $addon->getConfig();
+        if (!is_array($config)) {
+            $config = [];
+        }
+        // 数据库覆盖：addon_config 表中该插件的配置值优先生效
+        $dbConfig = get_addons_db_config($name);
+        foreach ($dbConfig as $field => $value) {
+            if (isset($config[$field]) && is_array($config[$field]) && array_key_exists('value', $config[$field])) {
+                $config[$field]['value'] = $value;
+            } else {
+                $config[$field] = $value;
+            }
+        }
+        // $type=true 时返回简化的 键=>值 映射
+        if ($type) {
+            $values = [];
+            foreach ($config as $field => $item) {
+                $values[$field] = (is_array($item) && array_key_exists('value', $item)) ? $item['value'] : $item;
+            }
+            return $values;
+        }
+        return $config;
+    }
+}
+
+if (!function_exists('get_addons_db_config')) {
+    /**
+     * 读取 addon_config 数据表中指定插件的配置值（带缓存）
+     * 
+     * 缓存键为 addon_config_{插件名}，写入配置时自动清除
+     * addon_config 表尚未创建时返回空数组（不缓存，便于建表后立即生效）
+     * 
+     * @param string $name 插件的名称
+     * @return array 配置键=>配置值 映射（值已 JSON 反序列化）
+     */
+    function get_addons_db_config($name)
+    {
+        $cacheKey = 'addon_config_' . $name;
+        $config   = Cache::get($cacheKey);
+        if (!is_array($config)) {
+            try {
+                $rows = \think\facade\Db::name('addon_config')
+                    ->where('addon', $name)
+                    ->column('value', 'field');
+            } catch (\Throwable $e) {
+                // addon_config 表尚未创建时兜底，降级为无数据库配置
+                return [];
+            }
+            $config = [];
+            foreach ($rows as $k => $v) {
+                $decoded    = json_decode((string)$v, true);
+                $config[$k] = ($decoded === null && $v !== 'null') ? $v : $decoded;
+            }
+            Cache::set($cacheKey, $config);
+        }
+        return $config;
     }
 }
 
 if (!function_exists('set_addons_config')) {
     /**
      * 设置插件的配置信息
-     * 本函数用于更新指定插件的配置文件
-     * 如果插件存在,则将新配置信息写入插件的配置文件中
+     * 本函数用于更新指定插件的配置
+     * 写入分两层：插件目录 config.php 保存完整配置结构（保持原有行为），
+     * 同时将各配置项的 value 同步到 addon_config 数据表（独立存储，卸载时可统一清理）
+     * 写入后自动清除 addon_config_{插件名} 缓存
+     * addon_config 表尚未创建时自动降级为仅写文件，保持向后兼容
      * @param string $name 插件名称.如果未指定名称,则默认为空字符串
      * @param array $array 新的配置信息数组.如果未指定配置数组,则默认为空数组
      * @return mixed|bool 如果插件不存在,则返回空数组.如果插件存在且配置更新成功,则返回true.否则,返回false
@@ -153,8 +211,93 @@ if (!function_exists('set_addons_config')) {
         if (!$addon) {
             return [];
         }
-        // 调用插件实例的setConfig方法来更新插件的配置文件,并返回操作结果
-        return $addon->setConfig($name, $array);
+        // 调用插件实例的setConfig方法来更新插件的配置文件（保持原有行为）
+        $result = $addon->setConfig($name, $array);
+        // 同步配置值到 addon_config 数据表
+        try {
+            $time = time();
+            foreach ($array as $field => $item) {
+                $value = (is_array($item) && array_key_exists('value', $item)) ? $item['value'] : $item;
+                $data  = [
+                    'value'       => json_encode($value, JSON_UNESCAPED_UNICODE),
+                    'update_time' => $time,
+                ];
+                $id = \think\facade\Db::name('addon_config')
+                    ->where('addon', $name)
+                    ->where('field', (string)$field)
+                    ->value('id');
+                if ($id) {
+                    \think\facade\Db::name('addon_config')->where('id', $id)->update($data);
+                } else {
+                    $data['addon']       = $name;
+                    $data['field']       = (string)$field;
+                    $data['create_time'] = $time;
+                    \think\facade\Db::name('addon_config')->insert($data);
+                }
+            }
+            Cache::delete('addon_config_' . $name);
+        } catch (\Throwable $e) {
+            // addon_config 表尚未创建时忽略，仅保留文件存储
+        }
+        return $result;
+    }
+}
+
+if (!function_exists('get_addons_config_value')) {
+    /**
+     * 读取插件单个配置项的值（便捷函数，供插件业务代码使用）
+     * 
+     * 优先返回 addon_config 数据表中的值，其次回退到 config.php 中的默认值
+     * 
+     * @param string $name 插件的名称
+     * @param string $field 配置键
+     * @param mixed $default 配置不存在时的默认值
+     * @return mixed 配置值
+     */
+    function get_addons_config_value($name, $field, $default = null)
+    {
+        $values = get_addons_config($name, true);
+        return (is_array($values) && array_key_exists($field, $values)) ? $values[$field] : $default;
+    }
+}
+
+if (!function_exists('set_addons_config_value')) {
+    /**
+     * 写入插件单个配置项的值（便捷函数，供插件业务代码使用）
+     * 
+     * 仅写入 addon_config 数据表，不修改插件目录的 config.php 文件；写入后自动清除缓存
+     * 
+     * @param string $name 插件的名称
+     * @param string $field 配置键
+     * @param mixed $value 配置值（自动 JSON 序列化）
+     * @return bool 写入成功返回 true，addon_config 表不存在时返回 false
+     */
+    function set_addons_config_value($name, $field, $value)
+    {
+        try {
+            $time = time();
+            $data = [
+                'value'       => json_encode($value, JSON_UNESCAPED_UNICODE),
+                'update_time' => $time,
+            ];
+            $id = \think\facade\Db::name('addon_config')
+                ->where('addon', $name)
+                ->where('field', $field)
+                ->value('id');
+            if ($id) {
+                \think\facade\Db::name('addon_config')->where('id', $id)->update($data);
+            } else {
+                $data['addon']       = $name;
+                $data['field']       = $field;
+                $data['create_time'] = $time;
+                \think\facade\Db::name('addon_config')->insert($data);
+            }
+            Cache::delete('addon_config_' . $name);
+            return true;
+        } catch (\Throwable $e) {
+            // addon_config 表尚未创建时返回 false
+            return false;
+        }
     }
 }
 
