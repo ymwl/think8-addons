@@ -137,12 +137,12 @@ if (!function_exists('get_addons_config')) {
             $config = [];
         }
         // 数据库覆盖：addon_config 表中该插件的配置值优先生效
+        // 仅覆盖 config.php 已定义的配置项；数据库残留的孤儿字段（配置项已被删除/改名）不混入配置结构，
+        // 否则会以纯字符串元素进入配置数组，导致配置管理页渲染崩溃（Cannot access offset of type string on string）
         $dbConfig = get_addons_db_config($name);
         foreach ($dbConfig as $field => $value) {
             if (isset($config[$field]) && is_array($config[$field]) && array_key_exists('value', $config[$field])) {
                 $config[$field]['value'] = $value;
-            } else {
-                $config[$field] = $value;
             }
         }
         // $type=true 时返回简化的 键=>值 映射
