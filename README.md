@@ -1,8 +1,11 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.1.2`
+当前版本：`v1.1.3`
 
 #### 更新日志
+
+**v1.1.3**（2026-09-22）
+- 修复插件前台「插件控制器 XXX 未找到」误报：控制器在构造/初始化期间抛出的 `HttpResponseException`（业务 `error()` / `success()` / `redirect()` 跳转）此前被实例化处的 `catch (\Exception)` 一并捕获并改写成 404；现于 `src/addons/Route.php` 中在该 catch 之前新增 `catch (HttpResponseException $e) { throw $e; }` 予以放行，由框架正常输出业务跳转响应
 
 **v1.1.2**（2026-09-21）
 - 新增 `addon_url()`：生成插件访问地址，插件名显式写在第一段（如 `addon_url('test/index/link')`），在后台、其它应用、插件自身模板等任意上下文均可正确生成

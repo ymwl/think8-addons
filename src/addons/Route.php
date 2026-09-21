@@ -8,6 +8,7 @@ use think\helper\Str;
 use think\facade\Event;
 use think\facade\Config;
 use think\exception\HttpException;
+use think\exception\HttpResponseException;
 
 class Route
 {
@@ -68,6 +69,10 @@ class Route
         // 创建插件控制器的实例,如果实例创建失败,抛出HTTP异常
         try {
             $instance = new $class($app);
+        } catch (HttpResponseException $e) {
+            // 控制器构造/初始化期间的业务跳转(如 error/success/redirect)需放行,
+            // 由框架正常输出响应,不能被误判为"控制器未找到"
+            throw $e;
         } catch (\Exception $e) {
             throw new HttpException(404, lang('addon controller %s not found', [Str::studly($controller)]));
         }
