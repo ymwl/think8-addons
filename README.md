@@ -1,8 +1,18 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.1.0`
+当前版本：`v1.1.2`
 
 #### 更新日志
+
+**v1.1.2**（2026-09-21）
+- 新增 `addon_url()`：生成插件访问地址，插件名显式写在第一段（如 `addon_url('test/index/link')`），在后台、其它应用、插件自身模板等任意上下文均可正确生成
+- `addon_url()` 参数以「键/值」逐段追加、不做 `rawurlencode`、不追加 URL 后缀；仅传插件名时返回插件目录（`/addons/test`），便于拼接插件内文件路径
+- **移除 `addons_url()`（破坏性变更）**：其插件名只取自当前请求上下文（`$request->addon`），在后台/其它应用中会生成 `/addons//index/...` 一类错误地址，且第 3、4 个参数顺序与 `addon_url()` 相反、极易误用；仍在调用该函数的代码请改用 `addon_url()`
+- 文档与示例统一改用 `addon_url()`；框架自带插件 `addons/wechat` 的示例模板 `view/info.html` 同步替换
+
+**v1.1.1**（2026-08-26）
+- 修复配置项删除后插件配置页渲染崩溃
+- 补记：本次发布当时未同步更新本文件的版本号与更新日志，故于 v1.1.2 一并补录
 
 **v1.1.0**（2026-07-31）
 - 插件配置统一管理：新增「文件默认值 + `addon_config` 数据表存储」双层配置架构
@@ -210,11 +220,11 @@ return [
 如果插件中需要有链接或提交数据的业务，可以在插件中创建controller业务文件，
 要访问插件中的controller时使用addon_url生成url链接。
 如下：
-<a href="{:addons_url('Action/link')}">link test</a>
+<a href="{:addon_url('test/index/link')}">link test</a>
 或
-<a href="{:addons_url('test://Action/link')}">link test</a>
+<a href="{:addon_url('test/index/link', ['id' => 1])}">link test</a>
 格式为：
-test为插件名，Action为controller中的类名[多级控制器可以用.分割]，link为controller中的方法
+插件名为第一段，第二段为controller中的类名[多级控制器可以用.分割]，第三段为controller中的方法，其余为附加参数
 ```
 
 #### 创建插件的`controller`文件
@@ -318,14 +328,19 @@ function set_addons_config_value($name, $field, $value);
 function get_addons_instance($name);
 
 /**
- * 插件显示内容里生成访问插件的url
- * @param $url 在插件控制器中可忽略插件名，在非插件中生成时需指定插件名。例：插件名://控制器/方法
- * @param array $param
- * @param bool|string $suffix 生成的URL后缀
- * @param bool|string $domain 域名
- * @return bool|string
+ * 生成插件访问地址（插件名须显式写在第一段）
+ *
+ * 插件名不取自当前请求上下文（$request->addon），
+ * 在后台、其它应用、插件自身模板等任意上下文均可正确生成；
+ * 参数以 键/值 逐段追加（不做 rawurlencode），也不追加 URL 后缀。
+ *
+ * @param string $url 形如 test/index/link；仅传插件名时返回插件目录（/addons/test）
+ * @param array $params 附加参数
+ * @param bool $domain 是否返回带域名的完整地址
+ * @param bool $suffix 保留参数（兼容调用签名；当前不追加 url_html_suffix）
+ * @return string
  */
-function addons_url($url = '', $param = [], $suffix = true, $domain = false);
+function addon_url($url, $params = [], $domain = false, $suffix = false);
 
 /**
  * 获取插件菜单

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use think\facade\Event;
-use think\facade\Route;
+
 use think\facade\Cache;
 use think\helper\Str;
 use think\FileHelper;
@@ -381,58 +381,73 @@ if (!function_exists('get_addons_class')) {
     }
 }
 
-if (!function_exists('addons_url')) {
+
+if (!function_exists('addon_url')) {
     /**
-     * 生成插件的URL地址
-     * 
-     * 该函数用于构建插件的路由URL,支持从当前请求上下文中解析插件、控制器和操作,也支持通过参数直接指定URL的各个部分
-     * 可以设置URL的后缀和域名
-     * 
-     * @param string $url 要生成的URL路径,可以是相对路径或者完整的URL字符串
-     * @param array $param URL中的参数,以键值对形式提供
-     * @param bool|string $suffix URL的后缀,可以是true（使用配置的默认后缀）或者具体的后缀字符串
-     * @param bool|string $domain 是否使用域名,可以是true（使用配置的默认域名）或者具体的域名字符串
-     * @return mixed|bool|string 返回生成的URL字符串,如果无法生成则返回false
+     * 生成插件访问地址
+     *
+     * 路由规则为 /addons/{插件}/{控制器}/{方法}，附加参数以 键/值 形式逐段追加。
+     *
+     * 【关键】插件路由的参数还原逻辑在 think\route\Rule::parseUrlParams()：
+     *     preg_replace_callback('/(\w+)\/([^\/]+)/', ...)
+     * 它按「键/值」逐段取参，且不做任何 URL 解码。因此：
+     *   1. 参数值不可 rawurlencode —— 否则 'A,B' 会变成 'A%2CB'，控制器
+     *      $this->request->param('unicode') 拿到的就是 'A%2CB'，无法再按逗号拆分；
+     *   2. 参数值中不可含 "/"，否则会被切成新的键值对；含 "/"、"?"、"#" 的参数
+     *      改走查询串传递，Request::param() 同样会合并 GET 参数，读取方式不变；
+     *   3. 空值段无法被上述正则匹配，直接跳过（控制器取到自身默认值）。
+     *
+     * @param string $url    形如 zhengshu/index/chaxun；仅传插件名时返回插件目录
+     * @param array  $params 附加参数
+     * @param bool   $domain 是否返回带域名的完整地址
+     * @param bool   $suffix 保留参数（兼容调用签名；当前不追加 url_html_suffix）
+     * @return string
      */
-    function addons_url($url = '', $param = [], $suffix = true, $domain = false)
+    function addon_url($url, $params = [], $domain = false, $suffix = false)
     {
-        /* 获取当前应用的请求对象 */
-        $request = app('request');
-        /* 如果URL为空,尝试从当前请求中解析插件、控制器和操作 */
-        if (empty($url)) {
-            // 从请求中获取当前插件名
-            // 生成 url 模板变量
-            $addons = $request->addon;
-            // 从请求中获取当前控制器名,并将其转换为点分隔的形式
-            $controller = $request->controller();
-            $controller = str_replace('/', '.', $controller);
-            // 从请求中获取当前操作名
-            $action = $request->action();
+        $segments = array_values(array_filter(explode('/', trim((string)$url, '/')), 'strlen'));
+
+        if (empty($segments)) {
+            return '';
+        }
+
+        $addon = $segments[0];
+
+        // 仅传插件名时返回插件目录，便于拼接插件内的文件路径
+        // （如 ROOT_PATH . addon_url('source', false, false) . '/vendor/...'）。
+        if (count($segments) === 1) {
+            $path = '/addons/' . $addon;
         } else {
-            /* 对提供的URL字符串进行处理,以解析出插件、控制器和操作 */
-            $url = Str::studly($url);
-            $url = parse_url($url);
-            /* 如果URL中包含协议（scheme）,则认为是完整的URL,并从中提取插件、控制器和操作 */
-            if (isset($url['scheme'])) {
-                $addons = strtolower($url['scheme']);
-                $controller = $url['host'];
-                $action = trim($url['path'], '/');
-            } else {
-                /* 如果URL中不包含协议,则认为是相对路径,从中解析出控制器和操作 */
-                $route = explode('/', $url['path']);
-                $addons = $request->addon;
-                $action = array_pop($route);
-                $controller = array_pop($route) ?: $request->controller();
-                $controller = Str::snake((string)$controller);
-                /* 如果URL中包含查询参数,则将其合并到参数数组中 */
-                if (isset($url['query'])) {
-                    parse_str($url['query'], $query);
-                    $param = array_merge($query, $param);
+            $controller = $segments[1] ?? 'index';
+            $action     = $segments[2] ?? 'index';
+
+            $path  = '/addons/' . $addon . '/' . $controller . '/' . $action;
+            $query = [];
+
+            if (is_array($params)) {
+                foreach ($params as $k => $v) {
+                    if (is_array($v) || $v === null || $v === '') {
+                        continue;
+                    }
+                    $v = (string)$v;
+                    if (strpbrk($v, '/?#') === false) {
+                        $path .= '/' . $k . '/' . $v;
+                    } else {
+                        $query[$k] = $v;
+                    }
                 }
             }
+
+            if (!empty($query)) {
+                $path .= '?' . http_build_query($query);
+            }
         }
-        /* 使用解析出的插件、控制器和操作,以及参数数组,构建URL,并根据需要设置后缀和域名 */
-        return Route::buildUrl("@addons/{$addons}/{$controller}/{$action}", $param)->suffix($suffix)->domain($domain);
+
+        if ($domain) {
+            $path = app()->request->domain() . $path;
+        }
+
+        return $path;
     }
 }
 
