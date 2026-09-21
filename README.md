@@ -1,8 +1,13 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.1.4`
+当前版本：`v1.1.5`
 
 #### 更新日志
+
+**v1.1.5**（2026-09-22）
+- 修正 README 的 `rewrite` 配置示例结构：原示例为列表 + `name` 字段（`[['name' => 'rewrite', ...]]`），而 `get_addons_config()` 读取的是关联结构（`$config['rewrite']['value']`），照抄会导致插件取不到 `rewrite`、伪静态不生效；现改为与真实配置一致的 `'rewrite' => [...]`
+- 修正 README 示例中伪静态规则的键值方向：原示例为「键 = 控制器/操作、值 = 路径」，与实现及 `config/addons.php` 的 `route` 方向相反；现改为「键 = URL 规则模板（支持 `<name>` 必填段、`[<name>]` 可选段）、值 = 目标地址（`插件/控制器/操作`）」，并补充规则方向与 `addon_url()` 输出对应关系的说明
+- 纯文档修正，`src/` 代码与 v1.1.4 完全一致
 
 **v1.1.4**（2026-09-22）
 - **增强 `addon_url()`（无破坏性变更）**：插件在自身 `config.php` 里配置了 `rewrite` 伪静态规则时，`addon_url()` 会按「插件/控制器/操作」反查规则并填充 `<name>` / `[<name>]` 占位符，直接生成伪静态地址；未配置规则、规则未命中、或规则尚未同步到 `config/addons.php` 的 `route` 时，回退原有原生路由拼接，输出与升级前一致
@@ -200,28 +205,30 @@ class Plugin extends Addons	// 需继承think\Addons类
 
 ```php
 return [
-    [
-        'name'    => 'rewrite',
-        'title'   => '伪静态',
-        'type'    => 'array',
-        'content' =>
-            [],
-        'value'   =>
-            [
-                'index/index' => '/source/$',
-                'index/check'  => '/source/check',
-                'index/captcha'  => '/source/captcha',
-            ],
-        'rule'    => 'required',
-        'msg'     => '',
-        'tip'     => '',
-        'ok'      => '',
-        'extend'  => '',
+    'rewrite' => [
+        'title'  => '伪静态',
+        'type'   => 'array',
+        'value'  => [
+            // 键 = URL 规则模板（ThinkPHP 路由语法，支持 <name> 必填段、[<name>] 可选段）
+            // 值 = 目标地址「插件/控制器/操作」
+            '/'          => 'test/index/index',
+            '/link'      => 'test/index/link',
+            '/link/<id>' => 'test/index/link',
+        ],
+        'rule'   => 'required',
+        'msg'    => '',
+        'tip'    => '',
+        'ok'     => '',
+        'extend' => '',
     ],
 ];
 ```
 
+> 规则方向为「键 = URL 规则模板、值 = 目标地址（`插件/控制器/操作`）」，与 `config/addons.php` 中同步生成的 `route` 一致。上例中 `addon_url('test/index/link')` 生成 `/link`，`addon_url('test/index/link', ['id' => 1])` 命中 `/link/<id>` 生成 `/link/1`。
+>
 > 插件只需配好 `rewrite`，其内部（控制器、模板、后台等任意位置）生成地址时统一调用 `addon_url()` 即可：本扩展包会优先按 `rewrite` 输出伪静态地址，未命中时回退原生插件路由，**无需为插件单独编写地址生成类**（v1.1.4+）。
+>
+> `rewrite` 在保存配置或启用插件时由宿主系统同步进 `config/addons.php` 的 `route`；两者不一致时 `addon_url()` 回退原生路由，不会生成打不开的地址。
 
 #### 创建钩子`模板`文件
 > 在test->view目录中创建info.html模板文件，钩子在使用fetch方法时对应的模板文件。
