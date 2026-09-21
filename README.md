@@ -1,8 +1,15 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.1.3`
+当前版本：`v1.1.4`
 
 #### 更新日志
+
+**v1.1.4**（2026-09-22）
+- **增强 `addon_url()`（无破坏性变更）**：插件在自身 `config.php` 里配置了 `rewrite` 伪静态规则时，`addon_url()` 会按「插件/控制器/操作」反查规则并填充 `<name>` / `[<name>]` 占位符，直接生成伪静态地址；未配置规则、规则未命中、或规则尚未同步到 `config/addons.php` 的 `route` 时，回退原有原生路由拼接，输出与升级前一致
+- 参数分配策略：能被规则占位符吃下的参数并入路径段（要求值匹配 `[\w\.]+`，与框架 `default_route_pattern` 一致），其余自动以查询串追加——如含逗号的值（`A,B,C`）不会进入路径段，避免被框架解析成多个键值对
+- 新增内部辅助函数 `addon_rewrite_usable()`（参数值是否可用作路径段）、`addon_rewrite_fill()`（填充规则模板）、`addon_rewrite_registered()`（回查路由表）、`addon_rewrite_url()`（按插件 `rewrite` 反查并生成地址，结果按插件名缓存，避免模板高频调用时重复读配置与数据表）
+- `addon_rewrite_registered()` 会在生成前回查 `config('addons.route')`，仅当「规则模板 + 目标地址」双匹配时才采用：多个插件映射同一路径时 `route` 表只保留一条生效，若不校验会为落败的插件生成指向其它插件的地址
+- 插件不再需要自行维护地址生成类，插件内任意位置统一调用 `addon_url()` 即可，由本包决定输出伪静态还是原生路由
 
 **v1.1.3**（2026-09-22）
 - 修复插件前台「插件控制器 XXX 未找到」误报：控制器在构造/初始化期间抛出的 `HttpResponseException`（业务 `error()` / `success()` / `redirect()` 跳转）此前被实例化处的 `catch (\Exception)` 一并捕获并改写成 404；现于 `src/addons/Route.php` 中在该 catch 之前新增 `catch (HttpResponseException $e) { throw $e; }` 予以放行，由框架正常输出业务跳转响应
@@ -214,6 +221,8 @@ return [
 ];
 ```
 
+> 插件只需配好 `rewrite`，其内部（控制器、模板、后台等任意位置）生成地址时统一调用 `addon_url()` 即可：本扩展包会优先按 `rewrite` 输出伪静态地址，未命中时回退原生插件路由，**无需为插件单独编写地址生成类**（v1.1.4+）。
+
 #### 创建钩子`模板`文件
 > 在test->view目录中创建info.html模板文件，钩子在使用fetch方法时对应的模板文件。
 
@@ -332,6 +341,11 @@ function get_addons_instance($name);
 
 /**
  * 生成插件访问地址（插件名须显式写在第一段）
+ *
+ * 【优先伪静态】插件若在自身 config.php 中配置了 rewrite 伪静态规则（v1.1.4+），
+ * 则先按「插件/控制器/操作」反查规则并填充占位符，命中时直接输出伪静态地址；
+ * 未配置规则、规则未命中、或规则未同步到 config/addons.php 的 route 时，
+ * 回退原生路由拼接，输出与未启用伪静态时一致。
  *
  * 插件名不取自当前请求上下文（$request->addon），
  * 在后台、其它应用、插件自身模板等任意上下文均可正确生成；

@@ -382,11 +382,222 @@ if (!function_exists('get_addons_class')) {
 }
 
 
+if (!function_exists('addon_rewrite_usable')) {
+    /**
+     * 判断参数值能否作为伪静态规则的路径段占位符
+     *
+     * 判据与 think\Route 的 default_route_pattern 保持一致（默认 [\w\.]+），
+     * 即只允许字母、数字、下划线、点；含逗号、斜杠、问号、井号或其它字符的值
+     * 无法被路由规则捕获，这类参数须留在查询串中传递。
+     *
+     * @param mixed $value 参数值
+     * @return bool
+     */
+    function addon_rewrite_usable($value)
+    {
+        if ($value === null || $value === '' || is_array($value)) {
+            return false;
+        }
+        return preg_match('/^[\w\.]+$/', (string)$value) === 1;
+    }
+}
+
+if (!function_exists('addon_rewrite_fill')) {
+    /**
+     * 用业务参数填充单条伪静态规则模板
+     *
+     * 支持 ThinkPHP 原生占位符写法：<name> 为必填段、[<name>] 为可选段。
+     * 任一必填占位符缺参或取值非法时整条规则不可用，返回 null 由调用方换用其它规则。
+     *
+     * @param string $rule   规则模板，如 /res/<zhengshu_chaxun_id>/<unicode>
+     * @param array  $params 业务参数
+     * @return string|null 填充后的路径（含查询串）；该规则不可用返回 null
+     */
+    function addon_rewrite_fill($rule, $params)
+    {
+        $used = [];
+        $fail = false;
+
+        // 可选段：参数缺失时整段移除
+        $rule = preg_replace_callback('/\[\s*<([A-Za-z_][A-Za-z0-9_]*)>\s*\]/', function ($m) use ($params, &$used) {
+            $name = $m[1];
+            if (!addon_rewrite_usable($params[$name] ?? null)) {
+                return '';
+            }
+            $used[$name] = $params[$name];
+            return '{' . $name . '}';
+        }, $rule);
+
+        // 必填段：缺参或值非法则整条规则不可用
+        $rule = preg_replace_callback('/<([A-Za-z_][A-Za-z0-9_]*)>/', function ($m) use ($params, &$used, &$fail) {
+            $name = $m[1];
+            if (!addon_rewrite_usable($params[$name] ?? null)) {
+                $fail = true;
+                return $m[0];
+            }
+            $used[$name] = $params[$name];
+            return '{' . $name . '}';
+        }, $rule);
+
+        if ($fail) {
+            return null;
+        }
+
+        // 用实际值替换占位（不编码，与原生路由的参数还原规则保持一致）
+        $path = preg_replace_callback('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', function ($m) use ($used) {
+            return (string)$used[$m[1]];
+        }, $rule);
+
+        $path = preg_replace('#/+#', '/', '/' . trim((string)$path, '/'));
+
+        // 未被规则占位符吃掉的参数，以查询串追加（逗号还原以保持 A,B 观感）
+        $query = [];
+        foreach (array_diff_key($params, $used) as $k => $v) {
+            if (is_array($v) || $v === null || $v === '') {
+                continue;
+            }
+            $query[] = rawurlencode((string)$k) . '=' . str_replace('%2C', ',', rawurlencode((string)$v));
+        }
+        if (!empty($query)) {
+            $path .= (strpos($path, '?') === false ? '?' : '&') . implode('&', $query);
+        }
+
+        return $path;
+    }
+}
+
+if (!function_exists('addon_rewrite_registered')) {
+    /**
+     * 校验伪静态规则是否已同步进框架路由表（config/addons.php 的 route）
+     *
+     * 插件的 rewrite 会在保存配置/启用时由框架同步写入 route，运行时的路由注册
+     * 读取的正是 route。两处不一致时按规则生成的地址会打不开：可能是尚未同步，
+     * 也可能是该路径已被其它插件抢占（多个插件都映射同一路径时只有一条生效）。
+     * 故生成前须回查 route 确认「该规则模板 + 该目标」确实已注册，否则回退原生路由。
+     *
+     * 非框架环境（如独立单元测试）下 config() 不存在，跳过校验。
+     *
+     * @param string $rule   规则模板（键），如 /res/<zhengshu_chaxun_id>/<unicode>
+     * @param string $target 目标地址，如 zhengshu/index/res
+     * @return bool
+     */
+    function addon_rewrite_registered($rule, $target)
+    {
+        if (!function_exists('config')) {
+            return true;
+        }
+
+        $route = config('addons.route');
+        if (!is_array($route) || empty($route)) {
+            return false;
+        }
+
+        foreach ($route as $key => $val) {
+            if (is_array($val)) {
+                $val = implode('/', array_filter([
+                    $val['addon'] ?? '',
+                    $val['controller'] ?? '',
+                    $val['action'] ?? '',
+                ], 'strlen'));
+            }
+            if ((string)$key === (string)$rule && trim((string)$val, '/$') === $target) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('addon_rewrite_url')) {
+    /**
+     * 按插件自身的伪静态规则（config.php 的 rewrite）生成地址
+     *
+     * 规则来源与后台插件配置页同源，均为 get_addons_config($addon)['rewrite']：
+     *   键 = URL 规则模板（ThinkPHP 路由语法，支持 <name> / [<name>] 占位符）
+     *   值 = 目标地址 '插件/控制器/操作'
+     * 例：'/res/<zhengshu_chaxun_id>/<unicode>' => 'zhengshu/index/res'
+     *
+     * 同一「插件/控制器/操作」可能配置多条规则（如带/不带 unicode 段），
+     * 此处按「占位符越多越具体」排序后依次尝试，命中即返回；全部失败返回 null，
+     * 由调用方回退到原生插件路由。
+     *
+     * @param string $addon      插件名
+     * @param string $controller 控制器名
+     * @param string $action     操作名
+     * @param array  $params     业务参数
+     * @return string|null 命中并填充成功的路径；未配置或未命中返回 null
+     */
+    function addon_rewrite_url($addon, $controller, $action, $params = [])
+    {
+        // 每个插件每请求只读取一次伪静态配置（get_addons_config 涉及文件与
+        // addon_config 表读取，而本函数会被模板高频调用）
+        static $rewriteCache = [];
+        if (!array_key_exists($addon, $rewriteCache)) {
+            $config = get_addons_config($addon, true);
+            $rewriteCache[$addon] = (is_array($config) && isset($config['rewrite']) && is_array($config['rewrite']))
+                ? $config['rewrite']
+                : [];
+        }
+        $rewrite = $rewriteCache[$addon];
+        if (empty($rewrite)) {
+            return null;
+        }
+
+        $target = $addon . '/' . $controller . '/' . $action;
+        $rules  = [];
+
+        foreach ($rewrite as $key => $val) {
+            if (is_array($val)) {
+                // 兼容 {addon,controller,action} 结构
+                $val = implode('/', array_filter([
+                    $val['addon'] ?? '',
+                    $val['controller'] ?? '',
+                    $val['action'] ?? '',
+                ], 'strlen'));
+            }
+            // 值只保留 '插件/控制器/操作'，容忍首尾 / 与 fastadmin 风格的结尾 $
+            if (trim((string)$val, '/$') === $target) {
+                $key     = (string)$key;
+                $rules[] = ['rule' => $key, 'score' => (int)preg_match_all('/<[A-Za-z_][A-Za-z0-9_]*>/', $key)];
+            }
+        }
+
+        if (empty($rules)) {
+            return null;
+        }
+
+        // 占位符越多越具体，优先尝试；同分保持配置顺序（PHP 8 起 usort 稳定）
+        usort($rules, function ($a, $b) {
+            return $b['score'] <=> $a['score'];
+        });
+
+        foreach ($rules as $item) {
+            $path = addon_rewrite_fill($item['rule'], $params);
+            if ($path === null) {
+                continue;
+            }
+            // 规则须已真实注册到框架路由表，否则生成出的地址不可访问
+            if (!addon_rewrite_registered($item['rule'], $target)) {
+                continue;
+            }
+            return $path;
+        }
+
+        return null;
+    }
+}
+
 if (!function_exists('addon_url')) {
     /**
      * 生成插件访问地址
      *
-     * 路由规则为 /addons/{插件}/{控制器}/{方法}，附加参数以 键/值 形式逐段追加。
+     * 【优先伪静态】若插件在自己的 config.php 里配置了 rewrite 伪静态规则，
+     * 则先按「插件/控制器/操作」反查规则并填充占位符，命中时直接输出伪静态地址
+     * （业务参数能进路径段的并入路径段，其余以查询串追加）；未配置或未命中规则时，
+     * 回退到下面的原生路由拼接，输出与未启用伪静态时完全一致。
+     *
+     * 原生路由规则为 /addons/{插件}/{控制器}/{方法}，附加参数以 键/值 形式逐段追加。
      *
      * 【关键】插件路由的参数还原逻辑在 think\route\Rule::parseUrlParams()：
      *     preg_replace_callback('/(\w+)\/([^\/]+)/', ...)
@@ -421,25 +632,30 @@ if (!function_exists('addon_url')) {
             $controller = $segments[1] ?? 'index';
             $action     = $segments[2] ?? 'index';
 
-            $path  = '/addons/' . $addon . '/' . $controller . '/' . $action;
-            $query = [];
+            // 先尝试按插件伪静态规则生成；未命中（返回 null）时回退原生路由
+            $path = addon_rewrite_url($addon, $controller, $action, is_array($params) ? $params : []);
 
-            if (is_array($params)) {
-                foreach ($params as $k => $v) {
-                    if (is_array($v) || $v === null || $v === '') {
-                        continue;
-                    }
-                    $v = (string)$v;
-                    if (strpbrk($v, '/?#') === false) {
-                        $path .= '/' . $k . '/' . $v;
-                    } else {
-                        $query[$k] = $v;
+            if ($path === null) {
+                $path  = '/addons/' . $addon . '/' . $controller . '/' . $action;
+                $query = [];
+
+                if (is_array($params)) {
+                    foreach ($params as $k => $v) {
+                        if (is_array($v) || $v === null || $v === '') {
+                            continue;
+                        }
+                        $v = (string)$v;
+                        if (strpbrk($v, '/?#') === false) {
+                            $path .= '/' . $k . '/' . $v;
+                        } else {
+                            $query[$k] = $v;
+                        }
                     }
                 }
-            }
 
-            if (!empty($query)) {
-                $path .= '?' . http_build_query($query);
+                if (!empty($query)) {
+                    $path .= '?' . http_build_query($query);
+                }
             }
         }
 
