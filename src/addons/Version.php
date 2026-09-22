@@ -16,5 +16,5 @@ class Version
     /**
      * 当前插件框架版本（与发布 tag 保持一致）
      */
-    const VERSION = '1.2.0';
+    const VERSION = '1.2.1';
 }

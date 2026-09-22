@@ -4,8 +4,12 @@
 
 #### 更新日志
 
+**v1.2.1**（2026-09-22）
+- 文档修正：v1.2.0 的兼容性说明由「无破坏性变更」限定为「本包内无破坏性变更」——升级 v1.2.0 仅影响自行重写 `display()` / `success()` / `error()` 等方法的第三方插件（比本包更窄的签名会与加宽后的基类冲突，需按本包签名对齐）；仅继承使用、未重写的插件不受影响
+- `Version::VERSION` 同步更新为 `1.2.1`（与 tag 同步）
+
 **v1.2.0**（2026-09-22）
-- **控制器基类新增公共跳转/响应能力（无破坏性变更）**：新增 trait `think\addons\traits\Jump`（`success` / `error` / `result` / `redirect` / `getResponseType`），由 `think\addons\Controller` 默认引入，行为与宿主应用 `app\BaseController` 对齐（统一 `code/msg/data/url/wait` 结构、HTML 渲染跳转模板、Ajax/JSON 直接输出 json 且 error 自动注入 token）
+- **控制器基类新增公共跳转/响应能力（本包内无破坏性变更）**：新增 trait `think\addons\traits\Jump`（`success` / `error` / `result` / `redirect` / `getResponseType`），由 `think\addons\Controller` 默认引入，行为与宿主应用 `app\BaseController` 对齐（统一 `code/msg/data/url/wait` 结构、HTML 渲染跳转模板、Ajax/JSON 直接输出 json 且 error 自动注入 token）
 - 插件控制器不再需要自带一份跳转/报错方法；zhengshu 等插件可删除本地重复实现
 - HTML 跳转模板：优先读取宿主项目 `config/jump.php` 的 `dispatch_success_tmpl` / `dispatch_error_tmpl`；未接入该配置的项目回退本包内置模板 `src/addons/tpl/dispatch_jump.tpl`（零外部资源依赖）
 - `display()` 签名加宽为 `display($content, $vars, $config, $options)`：后两个参数兼容源项目 4 参数调用形式并忽略，兼容逻辑从插件上移至本包
@@ -305,6 +309,8 @@ $this->redirect(addon_url('test/index/index'));
 > **兼容性提示**：插件删除本地跳转方法、依赖本能力时，应在 `info.json` 声明
 > `"require_framework": "1.2.0"`，避免在不满足版本的老站点上安装后报“方法不存在”错误
 > （需宿主项目支持该字段检查，符号象CRM 已支持）。
+> 另：插件若自行重写 `display()` / `success()` / `error()` 等方法，签名不得比本包更窄
+> （如 `display($content, $vars)`），否则在 v1.2.0+ 下会因签名不兼容产生致命错误，需按本包签名对齐。
 
 #### 使用钩子
 > 创建好插件后就可以在正常业务中使用该插件中的钩子了
