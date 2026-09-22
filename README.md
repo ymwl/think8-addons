@@ -1,8 +1,16 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.1.5`
+当前版本：`v1.2.0`
 
 #### 更新日志
+
+**v1.2.0**（2026-09-22）
+- **控制器基类新增公共跳转/响应能力（无破坏性变更）**：新增 trait `think\addons\traits\Jump`（`success` / `error` / `result` / `redirect` / `getResponseType`），由 `think\addons\Controller` 默认引入，行为与宿主应用 `app\BaseController` 对齐（统一 `code/msg/data/url/wait` 结构、HTML 渲染跳转模板、Ajax/JSON 直接输出 json 且 error 自动注入 token）
+- 插件控制器不再需要自带一份跳转/报错方法；zhengshu 等插件可删除本地重复实现
+- HTML 跳转模板：优先读取宿主项目 `config/jump.php` 的 `dispatch_success_tmpl` / `dispatch_error_tmpl`；未接入该配置的项目回退本包内置模板 `src/addons/tpl/dispatch_jump.tpl`（零外部资源依赖）
+- `display()` 签名加宽为 `display($content, $vars, $config, $options)`：后两个参数兼容源项目 4 参数调用形式并忽略，兼容逻辑从插件上移至本包
+- 新增版本标记类 `think\addons\Version`（`VERSION` 常量，发版时与 tag 同步更新），供宿主系统做运行时能力检测；手工同步 vendor 的部署方式下不依赖可能滞后的 composer 元数据
+- `info.json` 兼容性声明新增可选字段 `require_framework`（由宿主项目检查，见下文说明）
 
 **v1.1.5**（2026-09-22）
 - 修正 README 的 `rewrite` 配置示例结构：原示例为列表 + `name` 字段（`[['name' => 'rewrite', ...]]`），而 `get_addons_config()` 读取的是关联结构（`$config['rewrite']['value']`），照抄会导致插件取不到 `rewrite`、伪静态不生效；现改为与真实配置一致的 `'rewrite' => [...]`
@@ -146,9 +154,10 @@ return [
 | `require_php` | 插件要求的最低 PHP 版本 |
 | `require_crm` | 插件要求的最低宿主系统版本（对比宿主项目 `config/version.php` 的 `version`） |
 | `max_crm` | 插件兼容的最高宿主系统版本 |
+| `require_framework` | 插件要求的最低插件框架版本（对比本扩展包版本，v1.2.0+ 由宿主项目检查） |
 
-> 三个字段均为可选，未声明时自动跳过对应检查项，老插件无需修改。
-> 兼容性检查由宿主项目在插件**安装、升级、启用**时执行（符号象CRM 中为 `app/admin/service/AddonLifecycle.php` 的 `checkCompatibility()` 方法），本扩展包不包含该逻辑。
+> 四个字段均为可选，未声明时自动跳过对应检查项，老插件无需修改。
+> 兼容性检查由宿主项目在插件**安装、升级、启用**时执行（符号象CRM 中为 `app/admin/service/AddonLifecycle.php` 的 `checkCompatibility()` 方法），本扩展包不包含该逻辑。其中 `require_framework` 的版本取值优先读本扩展包代码自带的 `think\addons\Version::VERSION`，不可用时回退 composer 元数据，手工同步 vendor 的部署方式下判断同样准确。
 
 ### 插件`Plugin.php`文件基础信息
 
@@ -254,7 +263,9 @@ return [
 <?php
 namespace addons\test\controller;
 
-class Index
+use think\addons\Controller;
+
+class Index extends Controller
 {
     public function link()
     {
@@ -262,6 +273,38 @@ class Index
     }
 }
 ```
+
+> v1.2.0 起建议继承 `think\addons\Controller`，即可直接使用下方「控制器公共方法」中的跳转/响应能力；不继承时也可单独 `use think\addons\traits\Jump;` 引入。
+
+#### 控制器公共方法（v1.2.0+）
+
+> 由 trait `think\addons\traits\Jump` 提供，`think\addons\Controller` 已默认引入，
+> 行为与宿主应用 `app\BaseController` 保持一致，插件无需自带实现。
+
+```php
+// 操作成功跳转（HTML 请求渲染跳转页，Ajax/JSON 请求直接输出 json）
+$this->success('操作成功', addon_url('test/index/res', ['id' => 1]), $data, 3);
+
+// 操作失败跳转（Ajax 请求时自动向 data 注入 token）
+$this->error('参数错误');
+
+// 返回封装后的 API 数据（code/msg/time/data，不跳转）
+$this->result($data);
+
+// URL 重定向
+$this->redirect(addon_url('test/index/index'));
+```
+
+规则说明：
+
+- 返回结构统一为 `code` / `msg` / `data` / `url` / `wait`（`result()` 为 `code` / `msg` / `time` / `data`）；
+- HTML 请求渲染跳转模板：优先读宿主项目 `config/jump.php` 的 `dispatch_success_tmpl` / `dispatch_error_tmpl`，未接入该配置的项目回退本包内置模板 `src/addons/tpl/dispatch_jump.tpl`；
+- Ajax/JSON 请求（`isAjax()` / `isJson()`）直接输出 `json`，不渲染模板；
+- 跳转类方法均通过 `HttpResponseException` 抛出响应，在 `initialize()`（控制器初始化）阶段同样可用。
+
+> **兼容性提示**：插件删除本地跳转方法、依赖本能力时，应在 `info.json` 声明
+> `"require_framework": "1.2.0"`，避免在不满足版本的老站点上安装后报“方法不存在”错误
+> （需宿主项目支持该字段检查，符号象CRM 已支持）。
 
 #### 使用钩子
 > 创建好插件后就可以在正常业务中使用该插件中的钩子了

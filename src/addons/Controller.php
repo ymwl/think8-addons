@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace think\addons;
 
 use think\App;
+use think\addons\traits\Jump;
 use think\facade\View;
 
 class Controller
 {
+    use Jump;
+
     /**
      * @var mixed|Model
      */
@@ -94,11 +97,17 @@ class Controller
 
     /**
      * 渲染内容输出
+     *
+     * 后两个参数仅为兼容源项目（FastAdmin / ThinkPHP5 风格）的 4 参数调用形式，
+     * 传入时忽略；PHP 本身会忽略用户函数的多余实参，此处显式声明以明确兼容意图。
+     *
      * @param string $content 模板内容
-     * @param array $vars 模板输出变量
+     * @param array  $vars    模板输出变量
+     * @param array  $config  保留参数（忽略）
+     * @param array  $options 保留参数（忽略）
      * @return mixed
      */
-    protected function display($content = '', $vars = [])
+    protected function display($content = '', $vars = [], $config = [], $options = [])
     {
         return $this->view->display($content, $vars);
     }
