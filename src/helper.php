@@ -409,7 +409,7 @@ if (!function_exists('addon_rewrite_fill')) {
      * 支持 ThinkPHP 原生占位符写法：<name> 为必填段、[<name>] 为可选段。
      * 任一必填占位符缺参或取值非法时整条规则不可用，返回 null 由调用方换用其它规则。
      *
-     * @param string $rule   规则模板，如 /res/<zhengshu_chaxun_id>/<unicode>
+     * @param string $rule   规则模板，如 /res/<chaxun_id>/<unicode>
      * @param array  $params 业务参数
      * @return string|null 填充后的路径（含查询串）；该规则不可用返回 null
      */
@@ -477,8 +477,8 @@ if (!function_exists('addon_rewrite_registered')) {
      *
      * 非框架环境（如独立单元测试）下 config() 不存在，跳过校验。
      *
-     * @param string $rule   规则模板（键），如 /res/<zhengshu_chaxun_id>/<unicode>
-     * @param string $target 目标地址，如 zhengshu/index/res
+     * @param string $rule   规则模板（键），如 /res/<chaxun_id>/<unicode>
+     * @param string $target 目标地址，如 dchaxun/index/res
      * @return bool
      */
     function addon_rewrite_registered($rule, $target)
@@ -516,7 +516,7 @@ if (!function_exists('addon_rewrite_url')) {
      * 规则来源与后台插件配置页同源，均为 get_addons_config($addon)['rewrite']：
      *   键 = URL 规则模板（ThinkPHP 路由语法，支持 <name> / [<name>] 占位符）
      *   值 = 目标地址 '插件/控制器/操作'
-     * 例：'/res/<zhengshu_chaxun_id>/<unicode>' => 'zhengshu/index/res'
+     * 例：'/res/<chaxun_id>/<unicode>' => 'dchaxun/index/res'
      *
      * 同一「插件/控制器/操作」可能配置多条规则（如带/不带 unicode 段），
      * 此处按「占位符越多越具体」排序后依次尝试，命中即返回；全部失败返回 null，
@@ -608,7 +608,7 @@ if (!function_exists('addon_url')) {
      *      改走查询串传递，Request::param() 同样会合并 GET 参数，读取方式不变；
      *   3. 空值段无法被上述正则匹配，直接跳过（控制器取到自身默认值）。
      *
-     * @param string $url    形如 zhengshu/index/chaxun；仅传插件名时返回插件目录
+     * @param string $url    形如 dchaxun/index/chaxun；仅传插件名时返回插件目录
      * @param array  $params 附加参数
      * @param bool   $domain 是否返回带域名的完整地址
      * @param bool   $suffix 保留参数（兼容调用签名；当前不追加 url_html_suffix）

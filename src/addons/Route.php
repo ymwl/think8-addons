@@ -9,6 +9,8 @@ use think\facade\Event;
 use think\facade\Config;
 use think\exception\HttpException;
 use think\exception\HttpResponseException;
+use think\Request;
+use think\Response;
 
 class Route
 {
@@ -57,6 +59,8 @@ class Route
         }
         // 触发addon_module_init事件,可以在事件处理程序中进行一些插件相关的初始化操作
         Event::trigger('addon_module_init', $request);
+        // SEO规范化:经原生插件路由(/addons/...)访问且插件伪静态规则可命中时,301重定向到伪静态地址
+        self::redirectToRewrite($request, $addon, $controller, $action);
         // 根据插件和控制器的名称获取插件控制器的类名,如果类名不存在,抛出HTTP异常
         $class = get_addons_class($addon, 'controller', $controller);
         if (!$class) {
@@ -98,5 +102,54 @@ class Route
         Event::trigger('addons_action_begin', $call);
         // 调用记录的操作方法,并返回执行结果
         return call_user_func_array($call, $vars);
+    }
+
+    /**
+     * 伪静态规范化重定向（SEO）
+     *
+     * 插件配置了伪静态规则（config.php 的 rewrite，保存配置/启用时同步进 config/addons.php 的 route）后，
+     * 同一内容会存在「原生插件路由 /addons/...」与「伪静态地址」两份可访问地址。
+     * 经原生地址访问时 301 重定向到伪静态地址，让搜索引擎只收录规范地址，避免重复内容分散权重；
+     * 未配置伪静态、规则未命中或尚未同步到 route 的插件不受影响，行为与升级前完全一致。
+     *
+     * 安全性说明：
+     * - 仅处理 GET/HEAD 请求，POST 等写操作不跳转（重定向会丢失请求体与请求语义）；
+     * - 目标地址由 addon_rewrite_url() 生成，与插件内部 addon_url() 的输出完全一致，
+     *   且仅在规则已真实注册到框架路由表时采用，不会跳转到打不开的地址；
+     * - 目标路径与当前路径一致时跳过，杜绝循环重定向。
+     *
+     * @param Request $request    当前请求对象
+     * @param string  $addon      插件名
+     * @param string  $controller 控制器名
+     * @param string  $action     操作名
+     * @return void
+     * @throws HttpResponseException 需要 301 时抛出，由框架输出重定向响应
+     */
+    protected static function redirectToRewrite(Request $request, string $addon, string $controller, string $action): void
+    {
+        if (!$request->isGet() && !$request->isHead()) {
+            return;
+        }
+        // 仅处理原生插件路由访问（/addons/...）；伪静态地址直接访问时不做跳转
+        $pathinfo = $request->pathinfo();
+        if (0 !== strpos($pathinfo, 'addons/')) {
+            return;
+        }
+        // 业务参数 = 路由段解析参数（剔除路由系统键）+ GET 查询串；
+        // 取值链路与插件内部 addon_url() 完全一致，保证重定向目标与站内链接相同
+        $params = $request->route();
+        unset($params['addon'], $params['controller'], $params['action']);
+        $params = array_merge($request->get(), $params);
+        // 未配置伪静态规则或全部规则不可用时返回 null，回退原生地址正常访问
+        $canonical = addon_rewrite_url($addon, $controller, $action, $params);
+        if (null === $canonical) {
+            return;
+        }
+        // 目标与当前路径一致时不跳转（规则本身以 addons/ 开头的极端情况）
+        if (trim((string) parse_url($canonical, PHP_URL_PATH), '/') === trim($pathinfo, '/')) {
+            return;
+        }
+
+        throw new HttpResponseException(Response::create($canonical, 'redirect')->code(301));
     }
 }
