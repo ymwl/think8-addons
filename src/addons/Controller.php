@@ -109,7 +109,19 @@ class Controller
      */
     protected function display($content = '', $vars = [], $config = [], $options = [])
     {
-        return $this->view->display($content, $vars);
+        // $this->view 为视图驱动实例，其 display() 返回 void 且直接输出，
+        // 这里用输出缓冲捕获驱动输出并返回，保持调用方能拿到字符串。
+        ob_start();
+        ob_implicit_flush(false);
+
+        try {
+            $this->view->display($content, $vars);
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
+
+        return ob_get_clean();
     }
 
     /**
