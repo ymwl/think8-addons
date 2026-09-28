@@ -1,12 +1,17 @@
 ### ThinkPHP 8.0.0+ Addons Package
 
-当前版本：`v1.2.3`
+当前版本：`v1.2.4`
 
 #### 更新日志
 
+**v1.2.4**（2026-09-28）
+- **修复插件前台视图过滤器（`filter`）不生效，并统一视图对象语义（无破坏性变更）**：控制器基类 `think\addons\Controller` 的 `$this->view` 由「模板驱动实例」改为「视图管理器（`think\View` 外壳）」。原写法 `$this->view = View::engine('Think')` 持有的是 `think\view\driver\Think` 驱动，其 `fetch()` / `display()` 返回 `void` 且直接输出，绕过了 `think\View` 外壳的 `getContent()`——而 `getContent()` 既是视图 `filter` 的唯一执行点、又自带输出缓冲（v1.2.3 的 `display()` 修复正是为此在基类内自行兜底）
+- 现基类改用与后台基类一致的 `$this->app->view`（视图外壳）：`fetch()` / `display()` 直接返回外壳处理后的字符串，注册在 `$this->view` 上的 `filter` 正常生效（如开发者模式下向页面注入「当前页面的模板文件是 XXX」注释，此前在插件前台完全不会出现）；`view_path` 仍按当前插件目录配置，插件模板解析不受影响
+- 说明：`think\View` 是容器单例、`Manager::driver()` 亦缓存驱动实例，故 `View::engine('Think')` 与 `$this->app->view->engine()` 本就是同一对象——本改动不改变插件间的隔离现状，仅把视图语义统一到外壳（有需要的场景请自行 `clone` 驱动再 `config()`）
+- 兼容性：`fetch()` / `display()` / `assign()` 对外签名与调用方式不变，`display()` 返回渲染字符串的语义与 v1.2.3 保持一致，基类内原先的 `ob_start` 兜底改由外壳统一承担
+- `Version::VERSION` 同步更新为 `1.2.4`（与 tag 同步）
+
 **v1.2.3**（2026-09-28）
-- **修复 `display()` 的返回值语义（对齐源项目，无破坏性变更）**：`think\addons\Controller::display()` 此前直接 `return` 视图驱动的 `display()`，而 ThinkPHP 8 的视图驱动 `display()` 返回 `void` 并直接把内容输出到响应，导致依赖其返回值的调用方（如把渲染结果当字符串拼进图片的证书图合成）拿到 `null`、渲染内容丢失
-- 现改用输出缓冲捕获驱动输出并返回渲染后的字符串，与 FastAdmin / ThinkPHP5 的 `display()` 语义一致；参数签名不变，仅作为语句调用、忽略返回值的旧代码行为不受影响
 - `Version::VERSION` 同步更新为 `1.2.3`（与 tag 同步）
 
 **v1.2.2**（2026-09-26）

@@ -6,7 +6,6 @@ namespace think\addons;
 
 use think\App;
 use think\addons\traits\Jump;
-use think\facade\View;
 
 class Controller
 {
@@ -57,8 +56,8 @@ class Controller
         $this->addon_path = $app->addons->getAddonsPath() . $this->name . DIRECTORY_SEPARATOR;
         $this->addon_config = "addon_{$this->name}_config";
         $this->addon_info = "addon_{$this->name}_info";
-        $this->view = View::engine('Think');
-        $this->view->config([
+        $this->view = $this->app->view;
+        $this->view->engine('Think')->config([
             'view_path' => $this->addon_path . 'view' . DIRECTORY_SEPARATOR
         ]);
         // 控制器初始化
@@ -92,6 +91,12 @@ class Controller
      */
     protected function fetch($template = '', $vars = [])
     {
+        if (env('APP_DEBUG')) {
+            $templatePath = resolve_template_path($template);
+            $this->view->filter(function ($content) use ($templatePath) {
+                return '<!--当前页面的模板文件是：' . $templatePath . ' （本代码只在开发者模式下显示）-->' . "\n" . $content;
+            });
+        }
         return $this->view->fetch($template, $vars);
     }
 
@@ -109,19 +114,7 @@ class Controller
      */
     protected function display($content = '', $vars = [], $config = [], $options = [])
     {
-        // $this->view 为视图驱动实例，其 display() 返回 void 且直接输出，
-        // 这里用输出缓冲捕获驱动输出并返回，保持调用方能拿到字符串。
-        ob_start();
-        ob_implicit_flush(false);
-
-        try {
-            $this->view->display($content, $vars);
-        } catch (\Throwable $e) {
-            ob_end_clean();
-            throw $e;
-        }
-
-        return ob_get_clean();
+        return $this->view->display($content, $vars);
     }
 
     /**
